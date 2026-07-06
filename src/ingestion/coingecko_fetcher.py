@@ -274,14 +274,15 @@ class CoinGeckoFetcher:
         errors = 0
         records = []
         
-        now_utc = datetime.now(timezone.utc)
+        # Schema hiện tại dùng TIMESTAMP không kèm timezone, nên normalize về UTC-naive trước khi ghi DB
+        now_utc = datetime.utcnow()
         
         try:
             cursor = db_conn.cursor()
             for timestamp_ms, price in prices:
                 try:
-                    # Chuyển đổi timestamp từ mili-giây sang datetime UTC thống nhất
-                    dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc)
+                    # Chuyển đổi timestamp từ mili-giây sang datetime UTC-naive để khớp schema TIMESTAMP
+                    dt = datetime.utcfromtimestamp(timestamp_ms / 1000.0)
                     records.append((
                         str(uuid.uuid4()), coin_uuid, dt, price,
                         None, None, None, None, 'coingecko', now_utc
@@ -296,7 +297,7 @@ class CoinGeckoFetcher:
             
             sql = """
                 INSERT INTO fact_prices 
-                (price_id, coin_id, timestamp, close, open, high, low, volume, source, fetched_at)
+                (price_id, coin_id, timestamp, close, open, high, low, volume, source, ingestion_timestamp)
                 VALUES %s
                 ON CONFLICT (coin_id, timestamp, source) DO NOTHING
             """
@@ -326,7 +327,7 @@ class CoinGeckoFetcher:
     def _log_validation(self, db_conn, coin_uuid: str, coingecko_id: str, 
                        inserted: int, skipped: int, errors: int):
         cursor = None
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.utcnow()
         try:
             cursor = db_conn.cursor()
             total = inserted + skipped + errors
